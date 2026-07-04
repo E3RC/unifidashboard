@@ -24,6 +24,10 @@ function AdminContent() {
   const [devices, setDevices] = useState<UniFiDevice[]>([]);
   const [actionMsg, setActionMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteMsg, setInviteMsg] = useState("");
+  const [invitations, setInvitations] = useState<any[]>([]);
+  const [showInvite, setShowInvite] = useState(false);
 
   useEffect(() => {
     const saved = document.cookie.match(/ubuquity_session=([^;]+)/);
@@ -112,6 +116,52 @@ function AdminContent() {
     }
   };
 
+  const inviteUser = async () => {
+    if (!inviteEmail) return;
+    setInviteMsg("");
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/invite", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ email: inviteEmail }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setInviteMsg(`Invitation sent to ${inviteEmail}`);
+        setInviteEmail("");
+        fetchInvitations();
+      } else {
+        setInviteMsg(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      setInviteMsg(`Error: ${(err as Error).message}`);
+    } finally {
+      setBusy(false);
+      setTimeout(() => setInviteMsg(""), 5000);
+    }
+  };
+
+  const fetchInvitations = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/invite?status=pending", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok) setInvitations(data.invitations || []);
+    } catch {
+      // ignore
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (!authed) return;
+    fetchInvitations();
+  }, [authed, fetchInvitations]);
+
   if (!authed) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
@@ -159,6 +209,54 @@ function AdminContent() {
           </Link>
         </div>
       </header>
+
+      <div
+        className="rounded-xl border border-[var(--border)] overflow-hidden mb-6"
+        style={{ background: "var(--card)" }}
+      >
+        <button
+          onClick={() => setShowInvite(!showInvite)}
+          className="w-full flex items-center justify-between p-4 hover:bg-[var(--card-hover)] transition-colors"
+        >
+          <span className="font-medium">Invite User</span>
+          <span className="text-sm text-[var(--muted)]">{showInvite ? "▲" : "▼"}</span>
+        </button>
+        {showInvite && (
+          <div className="border-t border-[var(--border)] p-4 space-y-3">
+            <div className="flex gap-2">
+              <input
+                type="email"
+                placeholder="user@example.com"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && inviteUser()}
+                className="flex-1 px-4 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] outline-none focus:border-[var(--accent)]"
+              />
+              <button
+                onClick={inviteUser}
+                disabled={busy || !inviteEmail}
+                className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+              >
+                {busy ? "..." : "Invite"}
+              </button>
+            </div>
+            {inviteMsg && <p className="text-sm text-[var(--accent)]">{inviteMsg}</p>}
+            {invitations.length > 0 && (
+              <div>
+                <p className="text-sm text-[var(--muted)] mb-2">Pending invitations:</p>
+                <div className="space-y-1">
+                  {invitations.map((inv: any) => (
+                    <div key={inv.id} className="text-sm flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--background)]">
+                      <span>{inv.email_address}</span>
+                      <span className="text-[var(--warning)] text-xs">({inv.status})</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="space-y-4">
         {devices.length === 0 ? (
