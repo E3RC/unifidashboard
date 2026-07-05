@@ -1,28 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { validateSession } from "@/lib/admin-auth";
+import { auth } from "@clerk/nextjs/server";
 import { togglePort, powerCyclePort } from "@/lib/unifi";
 import { getConsole, consoles } from "@/lib/consoles";
 import { run, ensureSchema } from "@/db";
 
 export const runtime = "nodejs";
 
-async function checkAuth(request: NextRequest): Promise<boolean> {
-  const authHeader = request.headers.get("authorization");
-  let token: string | null = null;
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    token = authHeader.slice(7);
-  } else {
-    const cookie = request.headers.get("cookie");
-    if (cookie) {
-      const match = cookie.match(/ubuquity_session=([^;]+)/);
-      if (match) token = match[1];
-    }
-  }
-  return validateSession(token);
-}
-
 export async function POST(request: NextRequest) {
-  if (!(await checkAuth(request))) {
+  const { userId } = await auth();
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

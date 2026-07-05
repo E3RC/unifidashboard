@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import type { UniFiDevice } from "@/lib/types";
 import { formatRate, formatUptime } from "@/lib/use-dashboard";
 
@@ -17,10 +18,7 @@ export default function AdminPage() {
 function AdminContent() {
   const searchParams = useSearchParams();
   const consoleId = searchParams.get("console") || "databunker1";
-  const [authed, setAuthed] = useState(false);
-  const [password, setPassword] = useState("");
-  const [token, setToken] = useState<string | null>(null);
-  const [loginError, setLoginError] = useState("");
+  const { isSignedIn } = useAuth();
   const [devices, setDevices] = useState<UniFiDevice[]>([]);
   const [actionMsg, setActionMsg] = useState("");
   const [busy, setBusy] = useState(false);
@@ -28,48 +26,6 @@ function AdminContent() {
   const [inviteMsg, setInviteMsg] = useState("");
   const [invitations, setInvitations] = useState<any[]>([]);
   const [showInvite, setShowInvite] = useState(false);
-
-  useEffect(() => {
-    const saved = document.cookie.match(/ubuquity_session=([^;]+)/);
-    const savedToken = saved ? saved[1] : null;
-    if (savedToken) {
-      fetch("/api/admin/status", {
-        headers: { Authorization: `Bearer ${savedToken}` },
-      })
-        .then((r) => r.json())
-        .then((d) => {
-          if (d.authenticated) {
-            setToken(savedToken);
-            setAuthed(true);
-          }
-        })
-        .catch(() => {});
-    }
-  }, []);
-
-  const login = async () => {
-    setLoginError("");
-    setBusy(true);
-    try {
-      const res = await fetch("/api/admin/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-      });
-      const data = await res.json();
-      if (res.ok && data.token) {
-        setToken(data.token);
-        setAuthed(true);
-        setPassword("");
-      } else {
-        setLoginError(data.error || "Login failed");
-      }
-    } catch {
-      setLoginError("Connection error");
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const fetchDevices = useCallback(async () => {
     try {
@@ -82,12 +38,12 @@ function AdminContent() {
   }, [consoleId]);
 
   useEffect(() => {
-    if (!authed) return;
+    if (!isSignedIn) return;
     const poll = () => fetchDevices();
     poll();
     const interval = setInterval(poll, 5000);
     return () => clearInterval(interval);
-  }, [authed, fetchDevices]);
+  }, [isSignedIn, fetchDevices]);
 
   const doAction = async (endpoint: string, body: Record<string, unknown>) => {
     setBusy(true);
@@ -95,10 +51,7 @@ function AdminContent() {
     try {
       const res = await fetch(endpoint, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...body, console: consoleId }),
       });
       const data = await res.json();
@@ -123,10 +76,7 @@ function AdminContent() {
     try {
       const res = await fetch("/api/admin/invite", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: inviteEmail }),
       });
       const data = await res.json();
@@ -147,47 +97,34 @@ function AdminContent() {
 
   const fetchInvitations = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/invite?status=pending", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch("/api/admin/invite?status=pending");
       const data = await res.json();
       if (res.ok) setInvitations(data.invitations || []);
     } catch {
       // ignore
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
-    if (!authed) return;
+    if (!isSignedIn) return;
     fetchInvitations();
-  }, [authed, fetchInvitations]);
+  }, [isSignedIn, fetchInvitations]);
 
-  if (!authed) {
+  if (!isSignedIn) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <div
-          className="rounded-xl border border-[var(--border)] p-8 w-full max-w-sm"
+          className="rounded-xl border border-[var(--border)] p-8 w-full max-w-sm text-center"
           style={{ background: "var(--card)" }}
         >
-          <h1 className="text-xl font-bold mb-1">Admin Login</h1>
-          <p className="text-sm text-[var(--muted)] mb-6">Enter the admin password to manage devices and ports</p>
-          <input
-            type="password"
-            placeholder="Admin password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && login()}
-            className="w-full px-4 py-2.5 rounded-lg bg-[var(--background)] border border-[var(--border)] outline-none focus:border-[var(--accent)] mb-3"
-            autoFocus
-          />
-          {loginError && <p className="text-sm text-[var(--error)] mb-3">{loginError}</p>}
-          <button
-            onClick={login}
-            disabled={busy || !password}
-            className="w-full py-2.5 rounded-lg bg-[var(--accent)] text-white font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+          <h1 className="text-xl font-bold mb-1">Admin</h1>
+          <p className="text-sm text-[var(--muted)] mb-6">Sign in with your Google account to manage devices and ports</p>
+          <Link
+            href="/sign-in"
+            className="inline-block w-full py-2.5 rounded-lg bg-[var(--accent)] text-white font-medium hover:opacity-90 transition-opacity"
           >
-            {busy ? "..." : "Login"}
-          </button>
+            Sign In
+          </Link>
           <Link href={`/${consoleId}`} className="block text-center text-sm text-[var(--muted)] mt-4 hover:text-[var(--foreground)]">
             ← Back to Dashboard
           </Link>
